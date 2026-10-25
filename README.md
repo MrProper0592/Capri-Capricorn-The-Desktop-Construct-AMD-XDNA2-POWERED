@@ -30,7 +30,7 @@ She isn't a coding assistant, productivity dashboard, or corporate chatbot—she
 
 Normally, running a local desktop companion via Ollama eats **3–5 GB of GPU VRAM** (or hammers your CPU cores), which hurts frame rates when gaming or drains your laptop battery.
 
-On **AMD Ryzen AI 300 Series** laptops (Strix Point / Krackan Point / Strix Halo), the 50+ TOPS **XDNA2 NPU** usually sits completely idle on Linux. This fork moves Capri's entire brain and voice recognition onto the NPU via **FastFlowLM (`flm`)** and the **`amdxdna` / XRT** driver stack:
+On **AMD Ryzen AI 300 & Ryzen AI 400 Series** laptops (Strix Point / Krackan Point / Strix Halo / Gorgon Point — all sharing the same **XDNA2 `aie2p` NPU** architecture), the 50+ TOPS NPU usually sits completely idle on Linux. This fork moves Capri's entire brain and voice recognition onto the XDNA2 NPU via **FastFlowLM (`flm`)** and the **`amdxdna` / XRT** driver stack:
 
 - **0% GPU VRAM Usage:** Your discrete GPU (NVIDIA/Radeon) and iGPU stay 100% free for games, rendering, or stay power-gated in `D3cold`.
 - **Ultra-Low Wattage:** Runs `.q4nx` 4-bit NPU2 weights across 8 AIE2P columns (`~20 tok/s` on `gemma3:4b`).
@@ -44,6 +44,7 @@ On **AMD Ryzen AI 300 Series** laptops (Strix Point / Krackan Point / Strix Halo
 
 ### Prerequisites
 Make sure the AMD XDNA2 NPU stack is installed on your Arch / CachyOS system:
+- **Supported Silicon:** AMD **Ryzen AI 300 Series** & **Ryzen AI 400 Series** (fully compatible back-to-back as both use the same 8-column **XDNA2 `aie2p`** NPU)
 - Linux kernel `6.14+` / `7.x` with `amdxdna` loaded (`/dev/accel/accel0`)
 - `xrt` (`xrt-smi`) and `fastflowlm` (`flm`) installed from CachyOS / Arch repos
 

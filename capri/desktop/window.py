@@ -379,10 +379,33 @@ class CapriWindow(QWidget):
             sleep = menu.addAction("💤  Sleep")
             sleep.triggered.connect(self._go_to_sleep)
 
+        npu_action = menu.addAction("⚡  XDNA2 NPU Status")
+        npu_action.triggered.connect(self._open_npu_status)
+
+        clear_action = menu.addAction("🧹  Clear Chat Memory")
+        clear_action.triggered.connect(self._clear_chat_memory)
+
         menu.addSeparator()
         quit_action = menu.addAction("✕  Quit")
         quit_action.triggered.connect(QApplication.quit)
         menu.exec(event.globalPos())
+
+    def _open_npu_status(self) -> None:
+        """Open the chat window and print live AMD XDNA2 NPU telemetry."""
+        if self._is_sleeping:
+            self._wake_up()
+        if self._chat_window is not None:
+            if not self._chat_window.isVisible():
+                self._chat_window.show()
+            self._chat_window.raise_()
+            self._chat_window.activateWindow()
+            if hasattr(self._chat_window, "show_npu_status"):
+                self._chat_window.show_npu_status()
+
+    def _clear_chat_memory(self) -> None:
+        """Clear chat history from the context menu."""
+        if self._chat_window is not None and hasattr(self._chat_window, "clear_memory"):
+            self._chat_window.clear_memory()
 
     # ── Qt paint override — keep background transparent ───────────────
 

@@ -30,13 +30,12 @@ She isn't a coding assistant, productivity dashboard, or corporate chatbot—she
 
 Normally, running a local desktop companion via Ollama eats **3–5 GB of GPU VRAM** (or hammers your CPU cores), which hurts frame rates when gaming or drains your laptop battery.
 
-On **AMD Ryzen AI 300 & Ryzen AI 400 Series** laptops (Strix Point / Krackan Point / Strix Halo / Gorgon Point — all sharing the same **XDNA2 `aie2p` NPU** architecture), the 50+ TOPS NPU usually sits completely idle on Linux. This fork moves Capri's entire brain and voice recognition onto the XDNA2 NPU via **FastFlowLM (`flm`)** and the **`amdxdna` / XRT** driver stack:
+On **AMD Ryzen AI 300 & Ryzen AI 400 Series** laptops (Strix Point / Krackan Point / Strix Halo / Gorgon Point — all sharing the same **XDNA2 `aie2p` NPU** architecture), the 50+ TOPS NPU usually sits completely idle on Linux. This fork moves Capri's text generation onto the XDNA2 NPU via **FastFlowLM (`flm`)** and the **`amdxdna` / XRT** driver stack:
 
 - **0% GPU VRAM Usage:** Your discrete GPU (NVIDIA/Radeon) and iGPU stay 100% free for games, rendering, or stay power-gated in `D3cold`.
 - **Ultra-Low Wattage:** Runs `.q4nx` 4-bit NPU2 weights across 8 AIE2P columns (`~20 tok/s` on `gemma3:4b`).
 - **Persistent Multi-Chat History:** Automatically saves conversation sessions to auto-generated user config (`~/.config/capri/chats.json`) with an interactive recent chats drawer, inline title renaming (`✎`), and delete confirmation.
 - **Wayland Native Pin on Top & Dragging:** Direct KDE Plasma 6 KWin DBus elevation (`📌 Pin on Top`) and compositor-managed dragging (`startSystemMove`) with seamless transparent alpha blending.
-- **NPU Push-to-Talk Voice (`whisper-v3:turbo`):** Hold `LEFT CTRL` to talk to Capri—speech-to-text runs directly on the XDNA2 NPU (`--asr 1`) instead of competing for CPU/GPU resources.
 - **No Ollama Required:** Reads Capri's original [`Modelfile`](Modelfile) directly in Python and injects her persona and sampling parameters straight into `flm serve`.
 - **Self-Healing Startup Safety-Net:** [`./run_xdna2.sh`](run_xdna2.sh) and [`capri/main.py`](capri/main.py) automatically check and fix missing Arch packages (`pacman`), XRT DMA `memlock` limits (`ulimit -l`), `.venv` Python packages, and NPU2 model downloads.
 
@@ -58,9 +57,9 @@ cd Capri-Capricorn-The-Desktop-Construct-AMD-XDNA2-POWERED
 ```
 
 On first launch, `./run_xdna2.sh` will automatically:
-1. Verify `python3`, `portaudio`, `libsndfile`, `/dev/accel/accel0`, `xrt-smi`, and `flm` (installing missing system libraries via `pkexec pacman` if needed).
+1. Verify `python3`, `/dev/accel/accel0`, `xrt-smi`, and `flm`.
 2. Check your kernel DMA `memlock` limit (`ulimit -l`) and configure `unlimited` via `pkexec` if it's capped at 8 MB.
-3. Pull `gemma3:4b` (`Gemma3-4B-NPU2`) and `whisper-v3:turbo` (`Whisper-V3-Turbo-NPU2`) via `flm pull` if not already installed.
+3. Pull `gemma3:4b` (`Gemma3-4B-NPU2`) via `flm pull` if not already installed.
 4. Create `.venv`, install Python dependencies from [`requirements.txt`](requirements.txt), and spawn Capri on your desktop.
 
 ### Hardware Self-Test
@@ -79,8 +78,7 @@ To verify your NPU hardware, firmware, and installed models from the terminal wi
   Memlock    : infinity (OK)
   Server     : ONLINE @ http://127.0.0.1:52625
   LLM Model  : gemma3:4b (ctx=4096, pmode=performance)
-  NPU ASR    : ENABLED (whisper-v3:turbo)
-  Installed  : gemma3:4b, qwen3:0.6b, whisper-v3:turbo
+  Installed  : gemma3:4b, qwen3:0.6b
 ============================================================
 ```
 
@@ -88,7 +86,7 @@ To verify your NPU hardware, firmware, and installed models from the terminal wi
 
 ## Desktop Controls & Terminal Commands
 
-### Mouse & Keyboard Controls
+### Mouse Controls
 | Action | Effect |
 | :--- | :--- |
 | **Left-click Sprite** | Open / close the terminal chat window (or wake Capri if she's sleeping) |
@@ -96,8 +94,7 @@ To verify your NPU hardware, firmware, and installed models from the terminal wi
 | **Left-click + drag** | Move Capri anywhere on your screen (native Wayland compositor drag) |
 | **Double left-click** | Poke Capri (happy reaction) |
 | **Right-click** | Context menu (`⚡ Wake` / `💤 Sleep`, `⚡ XDNA2 NPU Status`, `📌 Pin on Top`, `🧹 Clear Chat Memory`, `✕ Quit`) |
-| **Hold `LEFT CTRL`** | Push-to-Talk voice input (transcribed on the XDNA2 NPU via `whisper-v3:turbo`) |
-| **`ESC`** | Close recent chats drawer / interrupt spoken TTS audio |
+| **`ESC`** | Close recent chats drawer |
 
 ### Recent Chat Sessions Drawer
 Clicking the header title **`CAPRI // XDNA2 TERMINAL ▾`** opens the session history panel:
@@ -127,7 +124,6 @@ You can pull any FastFlowLM `aie2p` model with `flm pull <tag>` and pass `--mode
 | **`llama3.2:3b`** | `Llama-3.2-3B-NPU2` | 2.7 GB | Snappy casual chat with medium memory footprint |
 | **`qwen3:1.7b`** | `Qwen3-1.7B-NPU2` | 1.6 GB | Fast conversational model (`<think>` tags are automatically stripped) |
 | **`qwen3:0.6b`** | `Qwen3-0.6B-NPU2` | 0.66 GB | Ultra-lightweight, instant responses (`~80+ tok/s`) |
-| **`whisper-v3:turbo`** | `Whisper-V3-Turbo-NPU2` | 0.62 GB | NPU Speech-to-Text engine loaded automatically when `--asr 1` is active |
 
 ---
 
@@ -188,12 +184,9 @@ Linux restricts locked DMA memory (`ulimit -l`) to `8192 KB` by default, which p
   printf "[Manager]\nDefaultLimitMEMLOCK=infinity\n" | sudo tee /etc/systemd/user.conf.d/99-xdna-npu.conf
   ```
 
-### Optional Local Voice Output (Piper TTS)
-Push-to-talk speech recognition (`whisper-v3:turbo`) works out of the box on the XDNA2 NPU. If you also want Capri to speak replies out loud via `piper`, place the `piper` binary at `~/.local/share/piper/piper` (or install `piper-tts` from AUR) and place an ONNX voice model in `~/.local/share/piper/voices/`. If Piper isn't installed, Capri runs quietly in text-chat + NPU voice-input mode without errors.
-
 ---
 
 ## Credits
 
 - [**Juliowiwiwiwi**](https://github.com/Juliowiwiwiwi/Capri-Capricorn-The-Desktop-Construct) — Original Capri concept, character sprites, PySide6 UI, and `Modelfile` writing.
-- [**MrProper0592**](https://github.com/MrProper0592/Capri-Capricorn-The-Desktop-Construct-AMD-XDNA2-POWERED) — AMD Ryzen AI XDNA2 (`aie2p`) NPU port, FastFlowLM integration, NPU Whisper STT pipeline, and Arch Linux / CachyOS safety-net.
+- [**MrProper0592**](https://github.com/MrProper0592/Capri-Capricorn-The-Desktop-Construct-AMD-XDNA2-POWERED) — AMD Ryzen AI XDNA2 (`aie2p`) NPU port, FastFlowLM integration, and Arch Linux / CachyOS safety-net.

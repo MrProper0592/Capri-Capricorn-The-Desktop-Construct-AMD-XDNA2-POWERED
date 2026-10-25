@@ -13,6 +13,11 @@ ENV/
 .env
 *.log
 
+# User chat data (never commit user conversations)
+*.json
+!assets/**/*.json
+!package.json
+
 # OS / IDE artifacts
 .DS_Store
 Thumbs.db

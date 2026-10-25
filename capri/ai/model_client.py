@@ -264,6 +264,22 @@ class XDNA2Client:
         with self._lock:
             self._history.clear()
 
+    def set_history(self, messages: list[dict[str, str]]) -> None:
+        """Replace active conversation history with the provided messages."""
+        with self._lock:
+            self._history = [
+                {"role": m["role"], "content": m["content"]}
+                for m in messages
+                if isinstance(m, dict)
+                and m.get("role") in ("user", "assistant")
+                and "content" in m
+            ]
+
+    def get_history(self) -> list[dict[str, str]]:
+        """Return a copy of the current conversation history."""
+        with self._lock:
+            return list(self._history)
+
     def is_connected(self) -> bool:
         """
         Check if the active inference backend is reachable.

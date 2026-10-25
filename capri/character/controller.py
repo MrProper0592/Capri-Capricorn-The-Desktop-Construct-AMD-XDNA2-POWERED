@@ -10,6 +10,7 @@ from enum import Enum, auto
 
 class CapriState(Enum):
     IDLE     = auto()
+    TALKING  = auto()    # talking / generating state (uses capri_blink.png)
     HAPPY    = auto()
     BLINK    = auto()
     SLEEPING = auto()
@@ -18,6 +19,7 @@ class CapriState(Enum):
 # Maps each state to a filename inside assets/character/
 STATE_IMAGES = {
     CapriState.IDLE:     "capri_idle.png",
+    CapriState.TALKING:  "capri_blink.png",
     CapriState.HAPPY:    "capri_happy.png",
     CapriState.BLINK:    "capri_blink.png",
     CapriState.SLEEPING: "capri_sleeping.png",

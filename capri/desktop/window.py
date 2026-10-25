@@ -21,12 +21,13 @@ from PySide6.QtWidgets import (
 )
 
 from capri.character.controller import CharacterController, CapriState
+from capri.desktop.wm import apply_pin_on_top
 
 
 # ── tuneable constants ────────────────────────────────────────────────
 WINDOW_SIZE       = QSize(200, 200)   # px — adjust to your art size
 BLINK_INTERVAL_MS = 4_000            # how often she blinks (ms)
-BLINK_HOLD_MS     = 150              # how long blink image shows
+BLINK_HOLD_MS     = 2_500            # temporary debug hold (was 150ms) to inspect stray blink animation
 HAPPY_HOLD_MS     = 1_200            # how long happy expression stays
 SLEEP_AFTER_MS    = 60_000           # idle-to-sleep timeout (1 min)
 # ─────────────────────────────────────────────────────────────────────
@@ -45,6 +46,7 @@ class CapriWindow(QWidget):
         self._press_global_pos: QPoint | None = None
         self._chat_window = None
         self._is_sleeping = False
+        self._pinned_on_top = True
         self._idle_frames = []
 
         for filename in (
@@ -92,6 +94,8 @@ class CapriWindow(QWidget):
     def set_chat_window(self, chat_window) -> None:
         """Attach the chat panel created by main.py."""
         self._chat_window = chat_window
+        if hasattr(chat_window, "set_pinned"):
+            chat_window.set_pinned(self._pinned_on_top)
 
     def _toggle_chat(self) -> None:
         """Show or hide the chat panel when Capri is clicked."""
@@ -103,12 +107,15 @@ class CapriWindow(QWidget):
             self._chat_window.show()
             self._chat_window.raise_()
             self._chat_window.activateWindow()
+            if self._pinned_on_top:
+                apply_pin_on_top(self._chat_window, True, delayed=True)
         self._reset_sleep_timer()
 
     # ── window setup ─────────────────────────────────────────────────
 
     def _setup_window(self) -> None:
         """Configure the frameless transparent always-on-top window."""
+        self.setWindowTitle("Capri // Desktop Construct")
         self.setWindowFlags(
             Qt.FramelessWindowHint        |
             Qt.WindowStaysOnTopHint       |
@@ -125,6 +132,11 @@ class CapriWindow(QWidget):
             screen.height() - WINDOW_SIZE.height() - 60,
         )
 
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        if self._pinned_on_top:
+            apply_pin_on_top(self, True, delayed=True)
+
     def _setup_ui(self) -> None:
         """Create the image label that fills the window."""
         layout = QVBoxLayout(self)
@@ -138,17 +150,7 @@ class CapriWindow(QWidget):
         layout.addWidget(self.image_label)
 
     def _setup_timers(self) -> None:
-        """Set up blink and sleep timers."""
-        # Blink timer — fires every BLINK_INTERVAL_MS (+/- random jitter)
-        self._blink_timer = QTimer(self)
-        self._blink_timer.timeout.connect(self._do_blink)
-        self._schedule_next_blink()
-
-        # Blink-reset timer — returns to IDLE after short hold
-        self._blink_reset = QTimer(self)
-        self._blink_reset.setSingleShot(True)
-        self._blink_reset.timeout.connect(self._end_blink)
-
+        """Set up sleep and idle timers."""
         # Happy-reset timer — returns to IDLE after happy expression
         self._happy_reset = QTimer(self)
         self._happy_reset.setSingleShot(True)
@@ -288,35 +290,18 @@ class CapriWindow(QWidget):
 
         self.image_label.setPixmap(pixmap)
 
-    def _schedule_next_blink(self) -> None:
-        jitter = random.randint(-800, 800)
-        self._blink_timer.start(BLINK_INTERVAL_MS + jitter)
-
-    def _do_blink(self) -> None:
-        if self._is_sleeping:
-            return
-        self.controller.set_state(CapriState.BLINK)
-        self._blink_reset.start(BLINK_HOLD_MS)
-        self._schedule_next_blink()
-
-    def _end_blink(self) -> None:
-        if self.controller.current_state() == CapriState.BLINK:
-            self.controller.set_state(CapriState.IDLE)
-
     def _end_happy(self) -> None:
         if self.controller.current_state() == CapriState.HAPPY:
             self.controller.set_state(CapriState.IDLE)
 
     def _go_to_sleep(self) -> None:
         self._is_sleeping = True
-        self._blink_timer.stop()
         self.controller.set_state(CapriState.SLEEPING)
 
     def _wake_up(self) -> None:
         self._is_sleeping = False
         self.controller.set_state(CapriState.HAPPY)
         self._happy_reset.start(HAPPY_HOLD_MS)
-        self._schedule_next_blink()
         self._reset_sleep_timer()
 
     def _reset_sleep_timer(self) -> None:
@@ -328,25 +313,44 @@ class CapriWindow(QWidget):
         if event.button() == Qt.LeftButton:
             self._press_global_pos = event.globalPosition().toPoint()
             self._drag_start_pos = event.globalPosition().toPoint() - self.pos()
+            self._is_dragging = False
             if self._is_sleeping:
                 self._wake_up()
             else:
                 self._reset_sleep_timer()
 
     def mouseMoveEvent(self, event) -> None:
-        if self._drag_start_pos and event.buttons() & Qt.LeftButton:
-            self.move(event.globalPosition().toPoint() - self._drag_start_pos)
+        if self._press_global_pos and event.buttons() & Qt.LeftButton:
+            delta = (event.globalPosition().toPoint() - self._press_global_pos).manhattanLength()
+            if delta >= QApplication.startDragDistance():
+                self._is_dragging = True
+                # Try native Wayland compositor drag move first (xdg-shell / layer-shell)
+                handle = self.windowHandle()
+                if handle and hasattr(handle, "startSystemMove") and handle.startSystemMove():
+                    self._drag_start_pos = None
+                    return
+                # Fallback manual repositioning for X11 / unsupported compositors
+                if self._drag_start_pos:
+                    self.move(event.globalPosition().toPoint() - self._drag_start_pos)
+
+    def moveEvent(self, event) -> None:
+        super().moveEvent(event)
+        # Keep chat panel pinned next to Capri whenever she moves
+        if self._chat_window and self._chat_window.isVisible():
+            if hasattr(self._chat_window, "_reposition"):
+                self._chat_window._reposition()
 
     def mouseReleaseEvent(self, event) -> None:
         if event.button() == Qt.LeftButton:
             release_pos = event.globalPosition().toPoint()
-            was_click = (
+            was_click = not getattr(self, "_is_dragging", False) and (
                 self._press_global_pos is not None
                 and (release_pos - self._press_global_pos).manhattanLength()
                     < QApplication.startDragDistance()
             )
             self._drag_start_pos = None
             self._press_global_pos = None
+            self._is_dragging = False
             if was_click and not self._is_sleeping:
                 self._toggle_chat()
 
@@ -386,9 +390,26 @@ class CapriWindow(QWidget):
         clear_action.triggered.connect(self._clear_chat_memory)
 
         menu.addSeparator()
+
+        pin_action = menu.addAction("📌  Pin on Top")
+        pin_action.setCheckable(True)
+        pin_action.setChecked(self._pinned_on_top)
+        pin_action.toggled.connect(self._toggle_pin_on_top)
+
+        menu.addSeparator()
         quit_action = menu.addAction("✕  Quit")
         quit_action.triggered.connect(QApplication.quit)
         menu.exec(event.globalPos())
+
+    def _toggle_pin_on_top(self, checked: bool) -> None:
+        """Toggle always-on-top window flag for Capri (and her chat window)."""
+        self._pinned_on_top = checked
+        apply_pin_on_top(self, checked, delayed=False)
+        if self._chat_window is not None:
+            if hasattr(self._chat_window, "set_pinned"):
+                self._chat_window.set_pinned(checked)
+            if self._chat_window.isVisible():
+                apply_pin_on_top(self._chat_window, checked, delayed=False)
 
     def _open_npu_status(self) -> None:
         """Open the chat window and print live AMD XDNA2 NPU telemetry."""
